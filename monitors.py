@@ -3,6 +3,7 @@ import ctypes
 user32 = ctypes.WinDLL("user32.dll")
 
 QDC_ONLY_ACTIVE_PATHS = 2
+DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME = 2
 
 class LUID(ctypes.Structure):
     _fields_ = [
@@ -100,6 +101,27 @@ class DISPLAYCONFIG_MODE_INFO(ctypes.Structure):
         ("mode", DISPLAYCONFIG_MODE_UNION),
     ]
 
+class DISPLAYCONFIG_DEVICE_INFO_HEADER(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_uint32),
+        ("size", ctypes.c_uint32),
+        ("adapterId", LUID),
+        ("id", ctypes.c_uint32),
+    ]
+
+
+class DISPLAYCONFIG_TARGET_DEVICE_NAME(ctypes.Structure):
+    _fields_ = [
+        ("header", DISPLAYCONFIG_DEVICE_INFO_HEADER),
+        ("flags", ctypes.c_uint32),
+        ("outputTechnology", ctypes.c_uint32),
+        ("edidManufactureId", ctypes.c_uint16),
+        ("edidProductCodeId", ctypes.c_uint16),
+        ("connectorInstance", ctypes.c_uint32),
+        ("monitorFriendlyDeviceName", ctypes.c_wchar * 64),
+        ("monitorDevicePath", ctypes.c_wchar * 128),
+    ]
+
 user32.GetDisplayConfigBufferSizes.argtypes = [
     ctypes.c_uint32,
     ctypes.POINTER(ctypes.c_uint32),
@@ -107,6 +129,20 @@ user32.GetDisplayConfigBufferSizes.argtypes = [
 ]
 user32.GetDisplayConfigBufferSizes.restype = ctypes.c_long
 
+user32.QueryDisplayConfig.argtypes = [
+    ctypes.c_uint32,
+    ctypes.POINTER(ctypes.c_uint32),
+    ctypes.POINTER(DISPLAYCONFIG_PATH_INFO),
+    ctypes.POINTER(ctypes.c_uint32),
+    ctypes.POINTER(DISPLAYCONFIG_MODE_INFO),
+    ctypes.POINTER(ctypes.c_uint32),
+]
+user32.QueryDisplayConfig.restype = ctypes.c_long
+
+user32.DisplayConfigGetDeviceInfo.argtypes = [
+    ctypes.POINTER(DISPLAYCONFIG_DEVICE_INFO_HEADER),
+]
+user32.DisplayConfigGetDeviceInfo.restype = ctypes.c_long
 
 def get_buffer_sizes():
     path_count = ctypes.c_uint32()
@@ -122,3 +158,75 @@ def get_buffer_sizes():
         raise ctypes.WinError(result)
 
     return path_count.value, mode_count.value
+
+def query_active_displays():
+    for _ in range(3):
+        path_capacity, mode_capacity = get_buffer_sizes()
+
+        paths = (DISPLAYCONFIG_PATH_INFO * path_capacity)()
+        modes = (DISPLAYCONFIG_MODE_INFO * mode_capacity)()
+
+        path_count = ctypes.c_uint32(path_capacity)
+        mode_count = ctypes.c_uint32(mode_capacity)
+
+        result = user32.QueryDisplayConfig(
+            QDC_ONLY_ACTIVE_PATHS,
+            ctypes.byref(path_count),
+            paths,
+            ctypes.byref(mode_count),
+            modes,
+            None,
+        )
+
+        if result == 122:
+            continue
+
+        if result != 0:
+            raise ctypes.WinError(result)
+
+        return paths[:path_count.value], modes[:mode_count.value]
+
+    raise RuntimeError("La configuration des écrans change. Réessayez.")
+
+def print_active_displays():
+    paths, modes = query_active_displays()
+
+    for path in paths:
+        mode_index = path.sourceInfo.modeInfoIdx
+
+        if mode_index >= len(modes):
+            raise RuntimeError("Mode d’affichage introuvable.")
+
+        mode_info = modes[mode_index]
+
+        if mode_info.infoType != 1:
+            raise RuntimeError("Le mode reçu n’est pas un mode source.")
+
+        source = mode_info.mode.sourceMode
+        is_primary = source.position.x == 0 and source.position.y == 0
+        role = "Principal" if is_primary else "Secondaire"
+
+        name, device_path = get_monitor_identity(path.targetInfo)
+        name = name or "Moniteur sans nom"
+
+        print(
+            f"{name} : "
+            f"{source.width} × {source.height} — {role} — Actif"
+        )
+        print(f"  Identifiant : {device_path}")
+
+def get_monitor_identity(target):
+    request = DISPLAYCONFIG_TARGET_DEVICE_NAME()
+    request.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME
+    request.header.size = ctypes.sizeof(request)
+    request.header.adapterId = target.adapterId
+    request.header.id = target.id
+
+    result = user32.DisplayConfigGetDeviceInfo(
+        ctypes.byref(request.header)
+    )
+
+    if result != 0:
+        raise ctypes.WinError(result)
+
+    return request.monitorFriendlyDeviceName, request.monitorDevicePath
