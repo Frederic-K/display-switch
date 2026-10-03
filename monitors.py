@@ -171,7 +171,7 @@ def query_displays(flags=QDC_ONLY_ACTIVE_PATHS):
         mode_count = ctypes.c_uint32(mode_capacity)
 
         result = user32.QueryDisplayConfig(
-            QDC_ONLY_ACTIVE_PATHS,
+            flags,
             ctypes.byref(path_count),
             paths,
             ctypes.byref(mode_count),
