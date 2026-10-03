@@ -4,6 +4,7 @@ user32 = ctypes.WinDLL("user32.dll")
 
 QDC_ONLY_ACTIVE_PATHS = 2
 DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME = 2
+QDC_ALL_PATHS = 1
 
 class LUID(ctypes.Structure):
     _fields_ = [
@@ -144,12 +145,12 @@ user32.DisplayConfigGetDeviceInfo.argtypes = [
 ]
 user32.DisplayConfigGetDeviceInfo.restype = ctypes.c_long
 
-def get_buffer_sizes():
+def get_buffer_sizes(flags=QDC_ONLY_ACTIVE_PATHS): 
     path_count = ctypes.c_uint32()
     mode_count = ctypes.c_uint32()
 
     result = user32.GetDisplayConfigBufferSizes(
-        QDC_ONLY_ACTIVE_PATHS,
+        flags,
         ctypes.byref(path_count),
         ctypes.byref(mode_count),
     )
@@ -159,9 +160,9 @@ def get_buffer_sizes():
 
     return path_count.value, mode_count.value
 
-def query_active_displays():
+def query_displays(flags=QDC_ONLY_ACTIVE_PATHS):
     for _ in range(3):
-        path_capacity, mode_capacity = get_buffer_sizes()
+        path_capacity, mode_capacity = get_buffer_sizes(flags)
 
         paths = (DISPLAYCONFIG_PATH_INFO * path_capacity)()
         modes = (DISPLAYCONFIG_MODE_INFO * mode_capacity)()
@@ -189,7 +190,7 @@ def query_active_displays():
     raise RuntimeError("La configuration des écrans change. Réessayez.")
 
 def print_active_displays():
-    paths, modes = query_active_displays()
+    paths, modes = query_displays()
 
     for path in paths:
         mode_index = path.sourceInfo.modeInfoIdx
