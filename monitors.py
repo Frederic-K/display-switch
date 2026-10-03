@@ -5,6 +5,7 @@ user32 = ctypes.WinDLL("user32.dll")
 QDC_ONLY_ACTIVE_PATHS = 2
 DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME = 2
 QDC_ALL_PATHS = 1
+DISPLAYCONFIG_PATH_ACTIVE = 1
 
 class LUID(ctypes.Structure):
     _fields_ = [
@@ -189,10 +190,40 @@ def query_displays(flags=QDC_ONLY_ACTIVE_PATHS):
 
     raise RuntimeError("La configuration des écrans change. Réessayez.")
 
-def print_active_displays():
-    paths, modes = query_displays()
+def get_connected_displays():
+    paths, modes = query_displays(QDC_ALL_PATHS)
+    selected_paths = {}
 
     for path in paths:
+        target = path.targetInfo
+
+        if not target.targetAvailable:
+            continue
+
+        key = (
+            target.adapterId.HighPart,
+            target.adapterId.LowPart,
+            target.id,
+        )
+
+        if key not in selected_paths or path.flags & DISPLAYCONFIG_PATH_ACTIVE:
+            selected_paths[key] = path
+
+    return list(selected_paths.values()), modes
+
+def print_displays():
+    paths, modes = get_connected_displays()
+
+    for path in paths:
+        name, device_path = get_monitor_identity(path.targetInfo)
+        name = name or "Moniteur sans nom"
+        is_active = bool(path.flags & DISPLAYCONFIG_PATH_ACTIVE)
+
+        if not is_active:
+            print(f"{name} : Inactif — Résolution courante indisponible")
+            print(f"  Identifiant : {device_path}")
+            continue
+
         mode_index = path.sourceInfo.modeInfoIdx
 
         if mode_index >= len(modes):
@@ -206,9 +237,6 @@ def print_active_displays():
         source = mode_info.mode.sourceMode
         is_primary = source.position.x == 0 and source.position.y == 0
         role = "Principal" if is_primary else "Secondaire"
-
-        name, device_path = get_monitor_identity(path.targetInfo)
-        name = name or "Moniteur sans nom"
 
         print(
             f"{name} : "

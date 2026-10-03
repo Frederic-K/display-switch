@@ -1,5 +1,5 @@
 import argparse
-from monitors import print_active_displays
+from monitors import print_displays
 
 
 def main():
@@ -8,7 +8,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "list":
-        print_active_displays()
+        print_displays()
 
 if __name__ == "__main__":
     main()
