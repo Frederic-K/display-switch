@@ -259,3 +259,41 @@ def get_monitor_identity(target):
         raise ctypes.WinError(result)
 
     return request.monitorFriendlyDeviceName, request.monitorDevicePath
+
+def find_monitor(paths, expected_name):
+    matches = []
+
+    for path in paths:
+        name, _ = get_monitor_identity(path.targetInfo)
+
+        if name == expected_name:
+            matches.append(path)
+
+    if not matches:
+        raise RuntimeError(f"Moniteur introuvable : {expected_name}")
+
+    if len(matches) > 1:
+        raise RuntimeError(f"Plusieurs moniteurs portent le nom : {expected_name}")
+
+    return matches[0]
+
+def validate_primary_monitor(primary, modes):
+    if not primary.flags & DISPLAYCONFIG_PATH_ACTIVE:
+        raise RuntimeError("Le moniteur principal configuré est inactif.")
+
+    mode_index = primary.sourceInfo.modeInfoIdx
+
+    if mode_index >= len(modes):
+        raise RuntimeError("Le mode du moniteur principal est introuvable.")
+
+    mode_info = modes[mode_index]
+
+    if mode_info.infoType != 1:
+        raise RuntimeError("Le mode du moniteur principal est invalide.")
+
+    position = mode_info.mode.sourceMode.position
+
+    if position.x != 0 or position.y != 0:
+        raise RuntimeError(
+            "Le moniteur principal configuré n’est pas principal dans Windows."
+        )
