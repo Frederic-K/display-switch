@@ -224,38 +224,47 @@ def get_connected_displays():
 
     return list(selected_paths.values()), modes
 
-def print_displays():
+def get_display_text(*, include_identifiers=False):
     paths, modes = get_connected_displays()
+    descriptions = []
 
     for path in paths:
         name, device_path = get_monitor_identity(path.targetInfo)
         name = name or "Moniteur sans nom"
         is_active = bool(path.flags & DISPLAYCONFIG_PATH_ACTIVE)
 
-        if not is_active:
-            print(f"{name} : Inactif — Résolution courante indisponible")
-            print(f"  Identifiant : {device_path}")
-            continue
+        if is_active:
+            mode_index = path.sourceInfo.modeInfoIdx
 
-        mode_index = path.sourceInfo.modeInfoIdx
+            if mode_index >= len(modes):
+                raise RuntimeError("Mode d’affichage introuvable.")
 
-        if mode_index >= len(modes):
-            raise RuntimeError("Mode d’affichage introuvable.")
+            mode_info = modes[mode_index]
 
-        mode_info = modes[mode_index]
+            if mode_info.infoType != 1:
+                raise RuntimeError("Le mode reçu n’est pas un mode source.")
 
-        if mode_info.infoType != 1:
-            raise RuntimeError("Le mode reçu n’est pas un mode source.")
+            source = mode_info.mode.sourceMode
+            is_primary = source.position.x == 0 and source.position.y == 0
+            role = "Principal" if is_primary else "Secondaire"
 
-        source = mode_info.mode.sourceMode
-        is_primary = source.position.x == 0 and source.position.y == 0
-        role = "Principal" if is_primary else "Secondaire"
+            description = (
+                f"{name}\n"
+                f"{source.width} × {source.height} — {role} — Actif"
+            )
+        else:
+            description = f"{name}\nInactif — Résolution courante indisponible"
 
-        print(
-            f"{name} : "
-            f"{source.width} × {source.height} — {role} — Actif"
-        )
-        print(f"  Identifiant : {device_path}")
+        if include_identifiers:
+            description += f"\nIdentifiant : {device_path}"
+
+        descriptions.append(description)
+
+    return "\n\n".join(descriptions) or "Aucun écran disponible."
+
+
+def print_displays():
+    print(get_display_text(include_identifiers=True))
 
 def get_monitor_identity(target):
     request = DISPLAYCONFIG_TARGET_DEVICE_NAME()
