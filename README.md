@@ -224,7 +224,7 @@ Pour régénérer entièrement la recette à partir du point d'entrée, la comma
 python -m PyInstaller --onefile --windowed --name DisplaySwitch main.py
 ```
 
-Cette dernière commande peut réécrire `DisplaySwitch.spec` et perdre ses commentaires. Préférer la construction depuis le `.spec` pour les reconstructions ordinaires.
+Cette dernière commande peut réécrire `DisplaySwitch.spec` et perdre ses réglages. Préférer la construction depuis le `.spec` : il limite la recherche des DLL à Python et Windows pour éviter d'embarquer une bibliothèque incompatible provenant d'un autre outil installé (par exemple `icuuc.dll`). Ce réglage concerne seulement le processus de construction, pas le PATH permanent de Windows.
 
 Le résultat à distribuer contient deux fichiers dans `dist` :
 

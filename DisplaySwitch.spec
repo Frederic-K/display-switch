@@ -1,5 +1,18 @@
 # Recette de construction : python -m PyInstaller DisplaySwitch.spec
 
+import os
+from pathlib import Path
+import sys
+
+# Limiter la recherche des DLL à Python et Windows pendant la construction.
+windows_dir = Path(os.environ['SystemRoot'])
+os.environ['PATH'] = os.pathsep.join(str(path) for path in (
+    Path(sys.executable).parent,
+    Path(sys.base_prefix),
+    windows_dir / 'System32',
+    windows_dir,
+))
+
 # Analyser main.py et ses dépendances ; config.json reste un fichier externe.
 a = Analysis(
     ['main.py'],
