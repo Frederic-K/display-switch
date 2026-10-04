@@ -11,7 +11,9 @@ from config import load_config
 from monitors import disable_secondary, enable_secondary, get_display_text
 
 
+# Fenêtre qui affiche l'état des écrans et donne accès aux deux modes.
 class MainWindow(QWidget):
+    # Construire les textes, les boutons et leur disposition, puis lire l'état initial.
     def __init__(self):
         super().__init__()
 
@@ -53,12 +55,15 @@ class MainWindow(QWidget):
 
         self.refresh_displays()
 
+    # Actualiser l'état affiché ou montrer une erreur de lecture.
     def refresh_displays(self):
         try:
             self.displays.setText(get_display_text())
         except (OSError, ValueError, RuntimeError) as error:
             self.displays.setText(f"Lecture des écrans impossible : {error}")
 
+    # Exécuter l'action avec la configuration, afficher son résultat et actualiser la fenêtre.
+    # Bloquer les boutons pendant l'appel, puis les réactiver même en cas d'erreur.
     def run_action(self, action):
         self.work_button.setEnabled(False)
         self.personal_button.setEnabled(False)

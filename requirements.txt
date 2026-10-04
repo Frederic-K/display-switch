@@ -1,1 +1,2 @@
+# Dépendance de l’interface, avec une version fixe.
 PySide6==6.11.2

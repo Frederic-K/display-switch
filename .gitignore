@@ -1,5 +1,9 @@
+# Environnement Python local.
 .venv/
+# Caches Python.
 __pycache__/
 *.pyc
+# Sorties de construction PyInstaller.
 /build/
 /dist/
+/docs/

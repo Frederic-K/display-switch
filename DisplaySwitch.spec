@@ -1,6 +1,6 @@
-# -*- mode: python ; coding: utf-8 -*-
+# Recette de construction : python -m PyInstaller DisplaySwitch.spec
 
-
+# Analyser main.py et ses dépendances ; config.json reste un fichier externe.
 a = Analysis(
     ['main.py'],
     pathex=[],
@@ -14,8 +14,10 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+# Regrouper les modules Python dans l'archive interne.
 pyz = PYZ(a.pure)
 
+# Construire DisplaySwitch.exe en un seul fichier, sans console.
 exe = EXE(
     pyz,
     a.scripts,

@@ -5,12 +5,13 @@ from config import load_config
 from monitors import disable_secondary, enable_secondary, print_displays
 
 
+# Ouvrir la fenêtre sans argument, sinon exécuter la commande CLI et gérer ses erreurs.
 def main():
     parser = argparse.ArgumentParser(description="Display Switch")
     parser.add_argument(
-    "command",
-    nargs="?",
-    choices=["list", "check", "disable", "enable"],
+        "command",
+        nargs="?",
+        choices=["list", "check", "disable", "enable"],
     )
     args = parser.parse_args()
 
@@ -39,5 +40,6 @@ def main():
     return 0
 
 
+# Lancer le programme seulement lorsque ce fichier est exécuté directement.
 if __name__ == "__main__":
     sys.exit(main())

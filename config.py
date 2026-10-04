@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 
+# Lire le JSON à côté du script ou du .exe et vérifier les deux noms de moniteurs.
 def load_config():
     if getattr(sys, "frozen", False):
         config_path = Path(sys.executable).resolve().with_name("config.json")
