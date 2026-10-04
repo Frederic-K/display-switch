@@ -8,6 +8,8 @@ QDC_ALL_PATHS = 1
 DISPLAYCONFIG_PATH_ACTIVE = 1
 SDC_USE_SUPPLIED_DISPLAY_CONFIG = 0x20
 SDC_VALIDATE = 0x40
+SDC_APPLY = 0x80
+SDC_TOPOLOGY_EXTEND = 0x04
 
 class LUID(ctypes.Structure):
     _fields_ = [
@@ -309,7 +311,7 @@ def validate_primary_monitor(primary, modes):
             "Le moniteur principal configuré n’est pas principal dans Windows."
         )
 
-def check_disable(settings):
+def disable_secondary(settings, *, dry_run=False):
     paths, modes = get_connected_displays()
 
     primary = find_monitor(paths, settings["primary_monitor"])
@@ -352,4 +354,119 @@ def check_disable(settings):
     if result != 0:
         raise ctypes.WinError(result)
 
-    return "Désactivation validée par Windows — aucun changement appliqué."
+    if dry_run:
+        return "Désactivation validée par Windows — aucun changement appliqué."
+
+    result = user32.SetDisplayConfig(
+        len(remaining_paths),
+        path_array,
+        len(modes),
+        mode_array,
+        SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_APPLY,
+    )
+
+    if result != 0:
+        raise ctypes.WinError(result)
+
+    updated_paths, updated_modes = get_connected_displays()
+    updated_primary = find_monitor(
+        updated_paths, settings["primary_monitor"]
+    )
+    validate_primary_monitor(updated_primary, updated_modes)
+
+    updated_secondary = find_monitor(
+        updated_paths, settings["secondary_monitor"]
+    )
+
+    if updated_secondary.flags & DISPLAYCONFIG_PATH_ACTIVE:
+        raise RuntimeError(
+            "Après application, l’écran secondaire est encore actif."
+        )
+
+    return "Écran secondaire désactivé — principal actif et conservé."
+
+def enable_secondary(settings):
+    paths, modes = get_connected_displays()
+
+    if len(paths) != 2:
+        raise RuntimeError("La réactivation V1 nécessite deux écrans disponibles.")
+
+    primary = find_monitor(paths, settings["primary_monitor"])
+    secondary = find_monitor(paths, settings["secondary_monitor"])
+
+    if primary is secondary:
+        raise RuntimeError("Les deux rôles désignent le même écran.")
+
+    validate_primary_monitor(primary, modes)
+
+    if secondary.flags & DISPLAYCONFIG_PATH_ACTIVE:
+        if primary.sourceInfo.modeInfoIdx == secondary.sourceInfo.modeInfoIdx:
+            raise RuntimeError("Les écrans sont en duplication, pas en extension.")
+        return "L’écran secondaire est déjà actif en bureau étendu."
+
+    previous_paths = [
+        path for path in paths
+        if path.flags & DISPLAYCONFIG_PATH_ACTIVE
+    ]
+    path_array = (DISPLAYCONFIG_PATH_INFO * len(previous_paths))(
+        *previous_paths
+    )
+    mode_array = (DISPLAYCONFIG_MODE_INFO * len(modes))(*modes)
+
+    result = user32.SetDisplayConfig(
+        0, None, 0, None,
+        SDC_TOPOLOGY_EXTEND | SDC_VALIDATE,
+    )
+
+    if result != 0:
+        raise ctypes.WinError(result)
+
+    try:
+        result = user32.SetDisplayConfig(
+            0, None, 0, None,
+            SDC_TOPOLOGY_EXTEND | SDC_APPLY,
+        )
+
+        if result != 0:
+            raise ctypes.WinError(result)
+
+        updated_paths, updated_modes = get_connected_displays()
+        updated_primary = find_monitor(
+            updated_paths, settings["primary_monitor"]
+        )
+        updated_secondary = find_monitor(
+            updated_paths, settings["secondary_monitor"]
+        )
+
+        validate_primary_monitor(updated_primary, updated_modes)
+
+        if not updated_secondary.flags & DISPLAYCONFIG_PATH_ACTIVE:
+            raise RuntimeError("L’écran secondaire est resté inactif.")
+
+        if (
+            updated_primary.sourceInfo.modeInfoIdx
+            == updated_secondary.sourceInfo.modeInfoIdx
+        ):
+            raise RuntimeError("Windows a activé une duplication.")
+
+    except (OSError, RuntimeError) as error:
+        restore_result = user32.SetDisplayConfig(
+            len(previous_paths),
+            path_array,
+            len(modes),
+            mode_array,
+            SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_APPLY,
+        )
+
+        if restore_result != 0:
+            raise RuntimeError(
+                f"Réactivation échouée : {error}. "
+                f"Retour arrière échoué : {ctypes.WinError(restore_result)}"
+            ) from error
+
+        raise RuntimeError(
+            f"Réactivation non confirmée : {error}. "
+            "Windows a accepté le retour à la configuration précédente."
+        ) from error
+
+    return "Écran secondaire activé — bureau étendu et principal conservé."
