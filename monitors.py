@@ -6,6 +6,8 @@ QDC_ONLY_ACTIVE_PATHS = 2
 DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME = 2
 QDC_ALL_PATHS = 1
 DISPLAYCONFIG_PATH_ACTIVE = 1
+SDC_USE_SUPPLIED_DISPLAY_CONFIG = 0x20
+SDC_VALIDATE = 0x40
 
 class LUID(ctypes.Structure):
     _fields_ = [
@@ -145,6 +147,15 @@ user32.DisplayConfigGetDeviceInfo.argtypes = [
     ctypes.POINTER(DISPLAYCONFIG_DEVICE_INFO_HEADER),
 ]
 user32.DisplayConfigGetDeviceInfo.restype = ctypes.c_long
+
+user32.SetDisplayConfig.argtypes = [
+    ctypes.c_uint32,
+    ctypes.POINTER(DISPLAYCONFIG_PATH_INFO),
+    ctypes.c_uint32,
+    ctypes.POINTER(DISPLAYCONFIG_MODE_INFO),
+    ctypes.c_uint32,
+]
+user32.SetDisplayConfig.restype = ctypes.c_long
 
 def get_buffer_sizes(flags=QDC_ONLY_ACTIVE_PATHS): 
     path_count = ctypes.c_uint32()
@@ -297,3 +308,48 @@ def validate_primary_monitor(primary, modes):
         raise RuntimeError(
             "Le moniteur principal configuré n’est pas principal dans Windows."
         )
+
+def check_disable(settings):
+    paths, modes = get_connected_displays()
+
+    primary = find_monitor(paths, settings["primary_monitor"])
+    secondary = find_monitor(paths, settings["secondary_monitor"])
+
+    if primary is secondary:
+        raise RuntimeError("Les deux rôles désignent le même écran.")
+
+    validate_primary_monitor(primary, modes)
+
+    if not secondary.flags & DISPLAYCONFIG_PATH_ACTIVE:
+        return "L’écran secondaire est déjà désactivé."
+
+    if primary.sourceInfo.modeInfoIdx == secondary.sourceInfo.modeInfoIdx:
+        raise RuntimeError("Passez en bureau étendu avant cette action.")
+
+    remaining_paths = [
+        path for path in paths
+        if path.flags & DISPLAYCONFIG_PATH_ACTIVE and path is not secondary
+    ]
+
+    if not remaining_paths or not any(
+        path is primary for path in remaining_paths
+    ):
+        raise RuntimeError("Le principal doit rester actif.")
+
+    path_array = (DISPLAYCONFIG_PATH_INFO * len(remaining_paths))(
+        *remaining_paths
+    )
+    mode_array = (DISPLAYCONFIG_MODE_INFO * len(modes))(*modes)
+
+    result = user32.SetDisplayConfig(
+        len(remaining_paths),
+        path_array,
+        len(modes),
+        mode_array,
+        SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_VALIDATE,
+    )
+
+    if result != 0:
+        raise ctypes.WinError(result)
+
+    return "Désactivation validée par Windows — aucun changement appliqué."
