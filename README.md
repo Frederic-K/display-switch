@@ -24,6 +24,8 @@ Les fonctionnalités suivantes ont été testées manuellement sur la configurat
 - Désactivation du secondaire avec maintien du principal.
 - Réactivation du bureau étendu avec retour à la disposition précédente sur cette machine.
 - Interface Télétravail / Personnel et affichage des résultats.
+- Configuration du mode Télétravail depuis l'interface, après un changement de principal dans Windows.
+- Refus de la bascule si le principal Windows ne correspond plus aux réglages enregistrés.
 - Exécutable Windows sans console.
 
 Ces tests matériels ne constituent pas une garantie de comportement identique avec tous les pilotes ou d'autres topologies d'affichage.
@@ -77,9 +79,20 @@ Le fichier `config.json` contient les noms exacts renvoyés par Windows :
 
 La V1 sélectionne les écrans par leur nom. Elle affiche aussi leur chemin de périphérique, mais n'utilise pas encore ce chemin, l'EDID ou un numéro de série pour la sélection. Un nom absent ou plusieurs écrans portant le même nom provoquent un refus de l'action. Les numéros de cible et les identifiants locaux de carte graphique servent seulement à regrouper les résultats d'une lecture.
 
-Pour inverser les rôles habituels, définir d'abord le nouvel écran conservé comme principal dans Windows, puis inverser les noms dans le JSON. Le moteur n'a pas de modèle MSI codé en dur.
+Pour changer les rôles habituels sans modifier le JSON manuellement :
 
-En développement, le JSON est lu à côté de `config.py`. Dans la version empaquetée, il est lu à côté de `DisplaySwitch.exe`. Le dossier courant du terminal n'intervient pas dans ce choix. Le JSON est relu à chaque action et n'est jamais modifié par l'application.
+1. Activer les deux écrans en bureau étendu dans les paramètres Windows.
+2. Définir dans Windows l'écran principal à conserver pour le télétravail.
+3. Ouvrir l'application et cliquer sur Configurer Télétravail…
+4. Vérifier l'écran à conserver et l'écran à désactiver, puis cliquer sur Enregistrer.
+
+La configuration reflète les rôles déjà définis dans Windows : elle ne change aucun écran ni son rôle. Annuler ou fermer la boîte de dialogue laisse le fichier intact. Le programme exige deux écrans disponibles et actifs, avec des noms distincts et un seul principal. Il relit les rôles avant l'enregistrement et refuse la sauvegarde s'ils ont changé pendant la confirmation. Le moteur n'a pas de modèle MSI codé en dur.
+
+Si le principal est changé dans Windows sans actualiser les réglages Télétravail, la bascule est refusée. Cela protège l'écran configuré comme principal au lieu de changer automatiquement de cible.
+
+En développement, le JSON est lu et enregistré à côté de `config.py`. Dans la version empaquetée, il est situé à côté de `DisplaySwitch.exe`. Le dossier courant du terminal n'intervient pas dans ce choix. Le JSON est relu à chaque action ; seul le bouton Enregistrer de la configuration le remplace.
+
+La sauvegarde écrit d'abord un fichier temporaire dans le même dossier, puis remplace le JSON après écriture complète. Ce dossier doit donc être accessible en écriture. Une erreur est affichée si la sauvegarde est impossible. Le bouton Configurer Télétravail… peut aussi recréer une configuration absente ou remplacer un JSON invalide, puisqu'il part de la configuration Windows actuelle.
 
 JSON n'accepte pas les commentaires `#` : les explications de ses clés restent donc dans ce README et dans `config.py`.
 
@@ -94,6 +107,7 @@ Sans argument, le programme ouvre la fenêtre :
 - Télétravail appelle la désactivation du secondaire configuré.
 - Personnel demande la réactivation du bureau étendu.
 - Actualiser relit les écrans, notamment après un changement réalisé dans les paramètres Windows.
+- Configurer Télétravail… propose d'enregistrer les rôles actuels de Windows pour les prochaines bascules.
 
 L'état est actualisé au lancement et après chaque action. Il n'y a pas de surveillance permanente des branchements. Le résultat de la dernière action reste affiché séparément de l'état des écrans.
 
@@ -141,11 +155,11 @@ Le logiciel contrôle ce que Windows déclare actif. Il ne peut pas confirmer qu
 | Fichier | Rôle |
 | --- | --- |
 | `main.py` | Choix entre interface et CLI, analyse des arguments, erreurs et codes de sortie. |
-| `config.py` | Localisation du JSON, lecture et validation des valeurs. |
+| `config.py` | Localisation du JSON, lecture, validation et sauvegarde des valeurs. |
 | `config.json` | Noms des deux moniteurs configurés. |
 | `monitors.py` | Structures natives, signatures Windows, lecture, identification, désactivation et réactivation. |
 | `ui/__init__.py` | Déclaration du paquet Python `ui`. |
-| `ui/main_window.py` | Construction de la fenêtre et connexion des boutons au moteur. |
+| `ui/main_window.py` | Fenêtre, connexion des boutons au moteur et confirmation de la configuration Télétravail. |
 | `requirements.txt` | Dépendance graphique nécessaire au développement et à l'exécution Python. |
 | `DisplaySwitch.spec` | Recette de construction PyInstaller, commentée. |
 | `.gitignore` | Exclusion de l'environnement local, des caches et des sorties de construction. |
@@ -177,6 +191,8 @@ La lecture suit ce parcours :
 4. `get_monitor_identity` récupère le nom et le chemin Windows avec `DisplayConfigGetDeviceInfo`.
 5. `get_display_text` prépare le texte commun à la CLI et à la fenêtre.
 
+Pour configurer Télétravail, `detect_telework_config` déduit les deux rôles des écrans actifs. La fenêtre présente cette proposition, la vérifie à nouveau après confirmation, puis appelle `save_config`. Ce parcours n'appelle jamais `SetDisplayConfig`.
+
 Les chemins et leurs modes doivent provenir de la même requête : `modeInfoIdx` est un index dans ce tableau précis. Les chemins inactifs n'ont pas de résolution courante à lire.
 
 Pour changer l'affichage, `SetDisplayConfig` est appelé avec `SDC_VALIDATE` pour tester et `SDC_APPLY` pour appliquer. Ces deux options s'utilisent dans deux appels distincts. Les fonctions natives renvoient un code d'état : 0 indique le succès, une autre valeur devient une exception `ctypes.WinError`.
@@ -195,10 +211,12 @@ Utiliser la recette versionnée pour conserver ses paramètres et ses commentair
 
 ```powershell
 python -m PyInstaller --clean --noconfirm DisplaySwitch.spec
-Copy-Item -LiteralPath .\config.json -Destination .\dist\config.json
+if (-not (Test-Path -LiteralPath .\dist\config.json)) {
+    Copy-Item -LiteralPath .\config.json -Destination .\dist\config.json
+}
 ```
 
-`--clean` nettoie les fichiers temporaires de construction ; `--noconfirm` autorise le remplacement de la sortie précédente. La copie remplace aussi le JSON distribué par celui du projet : conserver ailleurs une configuration de distribution personnalisée avant de refaire cette copie.
+`--clean` nettoie les fichiers temporaires de construction ; `--noconfirm` autorise le remplacement de la sortie précédente. La copie conditionnelle initialise le JSON distribué seulement s'il n'existe pas, afin de conserver les préférences déjà enregistrées depuis le `.exe`. Les réglages du projet et ceux de `dist` sont deux fichiers indépendants ; utiliser Configurer Télétravail… dans l'exécutable pour actualiser ses propres réglages.
 
 Pour régénérer entièrement la recette à partir du point d'entrée, la commande initiale était :
 
@@ -215,7 +233,7 @@ DisplaySwitch.exe
 config.json
 ```
 
-Garder ces deux fichiers ensemble et lancer le `.exe` par double-clic. Python et PySide6 sont embarqués : leur installation séparée n'est pas nécessaire sur la machine cible. Le format `onefile` extrait ses dépendances dans un dossier temporaire au démarrage ; le JSON externe reste à côté du `.exe` et demeure modifiable.
+Garder ces deux fichiers ensemble dans un dossier accessible en écriture et lancer le `.exe` par double-clic. Python et PySide6 sont embarqués : leur installation séparée n'est pas nécessaire sur la machine cible. Le format `onefile` extrait ses dépendances dans un dossier temporaire au démarrage ; le JSON externe reste à côté du `.exe` et demeure modifiable depuis l'interface.
 
 Modifier les sources ne met pas à jour un exécutable déjà construit. Il faut le reconstruire pour diffuser une modification de code. Une modification du JSON externe est en revanche lue à la prochaine action.
 
@@ -234,6 +252,16 @@ python main.py list
 
 Vérifier que le principal reste actif et principal, que le secondaire devient inactif puis actif, que le bureau étendu et la disposition reviennent, et que les fenêtres restent accessibles. Refaire le cycle avec les boutons puis avec l'exécutable lorsqu'une modification le justifie.
 
+Pour vérifier le réglage Télétravail dans l'interface :
+
+1. Avec les deux écrans actifs en extension, ouvrir Configurer Télétravail… et vérifier les noms proposés.
+2. Annuler et vérifier que le JSON n'a pas changé ; rouvrir, enregistrer et vérifier le message de confirmation.
+3. Avec un écran inactif, vérifier que la configuration est refusée, puis revenir en bureau étendu.
+4. Pour tester l'inversion des rôles, changer le principal dans Windows. Avant de réenregistrer, Télétravail doit refuser l'ancienne configuration.
+5. Enregistrer les nouveaux rôles via le bouton, puis tester Télétravail et Personnel.
+
+Revenir à l'organisation habituelle dans Windows et la réenregistrer après ce test. La construction d'un nouvel exécutable ne remplace pas à elle seule ses préférences existantes.
+
 Pour vérifier uniquement la syntaxe sans importer le moteur ni basculer d'écran :
 
 ```powershell
@@ -246,14 +274,16 @@ Le projet ne contient pas actuellement de suite de tests automatisés du comport
 
 - Moniteur introuvable : vérifier les noms avec `list`, le branchement et la disponibilité du moniteur dans Windows.
 - Plusieurs moniteurs portent le même nom : la V1 refuse cette ambiguïté ; elle ne sait pas encore sélectionner par numéro de série ou chemin.
-- Le principal configuré n'est pas principal : corriger le rôle dans les paramètres Windows ou les noms dans le JSON.
+- Le principal configuré n'est pas principal : rétablir le rôle attendu dans Windows ou enregistrer la nouvelle organisation avec Configurer Télétravail…
 - Écrans en duplication : passer en bureau étendu dans Windows avant d'utiliser les actions de cette V1.
-- JSON introuvable dans l'exécutable : placer `config.json` à côté de `DisplaySwitch.exe`, pas seulement à la racine du projet.
+- JSON introuvable dans l'exécutable : placer `config.json` à côté de `DisplaySwitch.exe` ou le créer avec Configurer Télétravail… avec les deux écrans actifs.
+- Configuration impossible avec un écran inactif : réactiver le bureau étendu avant d'enregistrer les rôles.
+- Sauvegarde refusée : vérifier les droits d'écriture du dossier contenant le `.exe` et le JSON.
 - Erreur après une bascule : relire l'état avec Actualiser ou `list`. Une erreur n'implique pas que l'état d'avant l'action est encore présent ; les paramètres d'affichage Windows restent le moyen de remettre manuellement le bureau étendu.
 
 ## Évolutions envisagées
 
-Le choix ponctuel de l'écran à désactiver, la gestion d'un changement de principal, l'icône de notification, les raccourcis, le démarrage automatique et le changement HDMI/DisplayPort ne sont pas implémentés. La configuration actuelle fournit un mode Télétravail configurable, pas encore une sélection libre dans l'interface.
+Le choix ponctuel de l'écran à désactiver et le changement automatique de principal restent hors périmètre : l'application sert la routine Télétravail et enregistre une organisation préparée dans Windows. L'icône de notification, les raccourcis, le démarrage automatique et le changement HDMI/DisplayPort ne sont pas implémentés.
 
 ## Références
 

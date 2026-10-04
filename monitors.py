@@ -514,3 +514,42 @@ def enable_secondary(settings):
         ) from error
 
     return "Écran secondaire activé — bureau étendu et principal conservé."
+
+# Proposer les réglages Télétravail à partir de deux écrans actifs en extension.
+def detect_telework_config():
+    paths, modes = get_connected_displays()
+
+    if len(paths) != 2:
+        raise RuntimeError("Deux écrans doivent être disponibles.")
+
+    settings = {}
+
+    for path in paths:
+        if not path.flags & DISPLAYCONFIG_PATH_ACTIVE:
+            raise RuntimeError("Activez les deux écrans avant de configurer.")
+
+        mode_index = path.sourceInfo.modeInfoIdx
+
+        if mode_index >= len(modes) or modes[mode_index].infoType != 1:
+            raise RuntimeError("Le mode d’un écran est invalide.")
+
+        name, _ = get_monitor_identity(path.targetInfo)
+
+        if not name.strip():
+            raise RuntimeError("Un écran ne possède pas de nom utilisable.")
+
+        if name in settings.values():
+            raise RuntimeError("Les deux écrans portent le même nom.")
+
+        position = modes[mode_index].mode.sourceMode.position
+        is_primary = position.x == 0 and position.y == 0
+        role = "primary_monitor" if is_primary else "secondary_monitor"
+
+        if role in settings:
+            raise RuntimeError(
+                "Un bureau étendu avec un seul écran principal est nécessaire."
+            )
+
+        settings[role] = name
+
+    return settings
