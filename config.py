@@ -1,9 +1,13 @@
+import sys
 import json
 from pathlib import Path
 
 
 def load_config():
-    config_path = Path(__file__).resolve().with_name("config.json")
+    if getattr(sys, "frozen", False):
+        config_path = Path(sys.executable).resolve().with_name("config.json")
+    else:
+        config_path = Path(__file__).resolve().with_name("config.json")
 
     with config_path.open(encoding="utf-8") as file:
         settings = json.load(file)
