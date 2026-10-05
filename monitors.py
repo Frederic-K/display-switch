@@ -250,17 +250,23 @@ def get_connected_displays():
 
     return list(selected_paths.values()), modes
 
-# Préparer les noms, états et résolutions à afficher dans la fenêtre ou le terminal.
-def get_display_text(*, include_identifiers=False):
+# Lire le nom, l'état, le rôle et la résolution de chaque écran connecté.
+# La résolution vaut None et le rôle n'a pas de sens pour un écran inactif.
+def get_displays():
     paths, modes = get_connected_displays()
-    descriptions = []
+    displays = []
 
     for path in paths:
         name, device_path = get_monitor_identity(path.targetInfo)
-        name = name or "Moniteur sans nom"
-        is_active = bool(path.flags & DISPLAYCONFIG_PATH_ACTIVE)
+        display = {
+            "name": name or "Moniteur sans nom",
+            "device_path": device_path,
+            "active": bool(path.flags & DISPLAYCONFIG_PATH_ACTIVE),
+            "primary": False,
+            "resolution": None,
+        }
 
-        if is_active:
+        if display["active"]:
             mode_index = path.sourceInfo.modeInfoIdx
 
             if mode_index >= len(modes):
@@ -272,18 +278,29 @@ def get_display_text(*, include_identifiers=False):
                 raise RuntimeError("Le mode reçu n’est pas un mode source.")
 
             source = mode_info.mode.sourceMode
-            is_primary = source.position.x == 0 and source.position.y == 0
-            role = "Principal" if is_primary else "Secondaire"
+            display["primary"] = source.position.x == 0 and source.position.y == 0
+            display["resolution"] = (source.width, source.height)
 
-            description = (
-                f"{name}\n"
-                f"{source.width} × {source.height} — {role} — Actif"
-            )
+        displays.append(display)
+
+    return displays
+
+# Préparer les noms, états et résolutions à afficher dans le terminal.
+def get_display_text(*, include_identifiers=False):
+    descriptions = []
+
+    for display in get_displays():
+        name = display["name"]
+
+        if display["active"]:
+            width, height = display["resolution"]
+            role = "Principal" if display["primary"] else "Secondaire"
+            description = f"{name}\n{width} × {height} — {role} — Actif"
         else:
             description = f"{name}\nInactif — Résolution courante indisponible"
 
         if include_identifiers:
-            description += f"\nIdentifiant : {device_path}"
+            description += f"\nIdentifiant : {display['device_path']}"
 
         descriptions.append(description)
 

@@ -159,7 +159,10 @@ Le logiciel contrôle ce que Windows déclare actif. Il ne peut pas confirmer qu
 | `config.json` | Noms des deux moniteurs configurés. |
 | `monitors.py` | Structures natives, signatures Windows, lecture, identification, désactivation et réactivation. |
 | `ui/__init__.py` | Déclaration du paquet Python `ui`. |
-| `ui/main_window.py` | Fenêtre, connexion des boutons au moteur et confirmation de la configuration Télétravail. |
+| `ui/main_window.py` | Fenêtre, connexion des boutons au moteur et actualisation du bloc des écrans. |
+| `ui/widgets.py` | Petits éléments de la fenêtre : rangée de deux boutons, ligne d'écran, point d'état. |
+| `ui/config_dialog.py` | Boîte de confirmation « Configurer Télétravail ». |
+| `ui/theme.py` | Couleurs, tailles, espacements et feuille de style Qt du design system. |
 | `requirements.txt` | Dépendance graphique nécessaire au développement et à l'exécution Python. |
 | `DisplaySwitch.spec` | Recette de construction PyInstaller, commentée. |
 | `.gitignore` | Exclusion de l'environnement local, des caches et des sorties de construction. |
@@ -189,7 +192,7 @@ La lecture suit ce parcours :
 2. `query_displays` alloue les tableaux puis appelle `QueryDisplayConfig`. Elle peut recommencer jusqu'à trois fois si la capacité devient insuffisante.
 3. `get_connected_displays` garde les cibles disponibles et regroupe les chemins, en privilégiant les actifs.
 4. `get_monitor_identity` récupère le nom et le chemin Windows avec `DisplayConfigGetDeviceInfo`.
-5. `get_display_text` prépare le texte commun à la CLI et à la fenêtre.
+5. `get_displays` rassemble le nom, l'état, le rôle et la résolution de chaque écran. La fenêtre s'en sert directement ; `get_display_text` en fait le texte de la CLI.
 
 Pour configurer Télétravail, `detect_telework_config` déduit les deux rôles des écrans actifs. La fenêtre présente cette proposition, la vérifie à nouveau après confirmation, puis appelle `save_config`. Ce parcours n'appelle jamais `SetDisplayConfig`.
 
@@ -265,7 +268,7 @@ Revenir à l'organisation habituelle dans Windows et la réenregistrer après ce
 Pour vérifier uniquement la syntaxe sans importer le moteur ni basculer d'écran :
 
 ```powershell
-python -m py_compile main.py config.py monitors.py ui\__init__.py ui\main_window.py DisplaySwitch.spec
+python -m py_compile main.py config.py monitors.py ui\__init__.py ui\main_window.py ui\widgets.py ui\config_dialog.py ui\theme.py DisplaySwitch.spec
 ```
 
 Le projet ne contient pas actuellement de suite de tests automatisés du comportement matériel.
